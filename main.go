@@ -51,7 +51,10 @@ var (
 	baseURL            = flag.String("baseURL", os.Getenv("GITHUB_BASE_URL"), "Base URL of github enterprise")
 	uploadURL          = flag.String("uploadURL", os.Getenv("GITHUB_UPLOAD_URL"), "Upload URL of github enterprise")
 	insecure           = flag.Bool("insecure", strings.ToLower(os.Getenv("GITHUB_INSECURE")) == "true", "Ignore SSL certificate check")
+	commentsUrl        = flag.String("comments-url", os.Getenv("GITHUB_COMMENTS_URL"), "A direct comments url to use")
 )
+
+var CommentsUrlRegex = regexp.MustCompile(`^https:\/\/api\.github\.com\/repos\/(?<owner>[\w\-_]+)\/(?<repo>[\w\-_]+)\/issues\/(?<number>\w+)\/comments`)
 
 func getPullRequestOrIssueNumber(str string) (int, error) {
 	if str == "" {
@@ -143,6 +146,25 @@ func formatComment(comment string) (string, error) {
 	return re.ReplaceAllString(s, ""), nil
 }
 
+func reSubMatchMap(r *regexp.Regexp, str string) map[string]string {
+	match := r.FindStringSubmatch(str)
+	subMatchMap := make(map[string]string)
+	for i, name := range r.SubexpNames() {
+		if i != 0 {
+			subMatchMap[name] = match[i]
+		}
+	}
+	return subMatchMap
+}
+
+func getOptionPartsFromUrl(url string) (*string, *string, *string) {
+	match := reSubMatchMap(CommentsUrlRegex, url)
+	owner := match["owner"]
+	repo := match["repo"]
+	number := match["number"]
+	return &owner, &repo, &number
+}
+
 func main() {
 	flag.Parse()
 
@@ -150,6 +172,12 @@ func main() {
 		flag.PrintDefaults()
 		log.Fatal("-token or GITHUB_TOKEN required")
 	}
+	if *commentsUrl != "" {
+		// https://api.github.com/repos/castingnetworks/pf-core-api/issues/1847/comments
+		log.Printf("Parsing comments url:\n%s", *commentsUrl)
+		owner, repo, number = getOptionPartsFromUrl(*commentsUrl)
+	}
+
 	if *owner == "" {
 		flag.PrintDefaults()
 		log.Fatal("-owner or GITHUB_OWNER required")
